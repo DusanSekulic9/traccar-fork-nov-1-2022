@@ -50,6 +50,8 @@ public class Device extends GroupedModel implements Disableable {
     public static final String STATUS_ONLINE = "online";
     public static final String STATUS_OFFLINE = "offline";
 
+    public static final String STATUS_REDOVNO = "redovno";
+
     private String status;
 
     @QueryIgnore
@@ -58,7 +60,12 @@ public class Device extends GroupedModel implements Disableable {
     }
 
     public void setStatus(String status) {
-        this.status = status != null ? status.trim() : null;
+        if(this.status != null && status.equals(STATUS_ONLINE) && getInteger(Position.KEY_IGNITION) == 0){
+            this.status = STATUS_REDOVNO;
+            return;
+        }
+
+        this.status = status;
     }
 
     private Date lastUpdate;
