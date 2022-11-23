@@ -56,7 +56,7 @@ public class Device extends GroupedModel implements Disableable {
 
     @QueryIgnore
     public String getStatus() {
-        return status != null ? status : STATUS_OFFLINE;
+        return status != null ? status.trim() : STATUS_OFFLINE.trim();
     }
 
     public void setStatus(String status) {
