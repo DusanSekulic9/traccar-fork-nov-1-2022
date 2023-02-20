@@ -330,8 +330,8 @@ public class ReportResource extends BaseResource {
     @Path("devices")
     @GET
     @Produces(EXCEL)
-    public Response getDevicesReport() {
-        return executeReport(0, false, stream -> devicesReportProvider.getDevicesInfo());
+    public Response getDevicesReport() throws IOException, StorageException {
+        return devicesReportProvider.getDevicesInfo();
     }
 
 }

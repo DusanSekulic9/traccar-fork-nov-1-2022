@@ -15,6 +15,12 @@ import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Request;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,7 +35,7 @@ public class DevicesReportProvider {
         this.deviceResource = deviceResource;
     }
 
-    public void getDevicesInfo() throws StorageException {
+    public Response getDevicesInfo() throws StorageException, IOException {
         List<User> users = storage.getObjects(User.class, new Request(new Columns.All()))
                 .stream()
                 .filter(user -> !user.getAdministrator())
@@ -46,11 +52,13 @@ public class DevicesReportProvider {
             usersWithDevices.add(new UserDeviceItem(user, devices));
         }
 
-        createExcel(usersWithDevices, countedDevices);
+        OutputStream ou = new FileOutputStream("report.xlsx");
+        createExcel(usersWithDevices, countedDevices).write(ou);
         System.out.println(countedDevices.size());
+        return Response.ok(ou).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report.xlsx").build();
     }
 
-    private void createExcel(List<UserDeviceItem> usersWithDevices, Map<Long, Device> countedDevices) {
+    private XSSFWorkbook createExcel(List<UserDeviceItem> usersWithDevices, Map<Long, Device> countedDevices) {
         XSSFWorkbook workbook = new XSSFWorkbook();
 
         XSSFSheet spreadsheet = workbook.createSheet(" Devices ");
@@ -71,6 +79,7 @@ public class DevicesReportProvider {
             }
         }
         createTotal(spreadsheet, countedDevices);
+        return workbook;
     }
 
     private void createTotal(XSSFSheet spreadsheet, Map<Long, Device> countedDevices) {
