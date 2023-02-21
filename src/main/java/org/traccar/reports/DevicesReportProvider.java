@@ -1,10 +1,8 @@
 package org.traccar.reports;
 
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.xssf.usermodel.XSSFRow;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.traccar.api.resource.DeviceResource;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.*;
 import org.traccar.model.Device;
 import org.traccar.model.User;
 import org.traccar.reports.model.UserDeviceItem;
@@ -15,24 +13,26 @@ import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Request;
 
 import javax.inject.Inject;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import java.io.FileNotFoundException;
+import javax.ws.rs.core.StreamingOutput;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class DevicesReportProvider {
 
     private final Storage storage;
-    private final DeviceResource deviceResource;
+    private final String EMAIL = "EMAIL";
+    private final String DEVICE_NAME = "UREĐAJ";
 
     @Inject
-    public DevicesReportProvider(Storage storage, DeviceResource deviceResource) {
+    public DevicesReportProvider(Storage storage) {
         this.storage = storage;
-        this.deviceResource = deviceResource;
     }
 
     public Response getDevicesInfo() throws StorageException, IOException {
@@ -54,37 +54,105 @@ public class DevicesReportProvider {
 
         OutputStream ou = new FileOutputStream("report.xlsx");
         createExcel(usersWithDevices, countedDevices).write(ou);
-        System.out.println(countedDevices.size());
-        return Response.ok(ou).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report.xlsx").build();
+        StreamingOutput stream = output -> {
+            createExcel(usersWithDevices, countedDevices);
+        };
+        return Response.ok(stream).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report.xlsx").build();
     }
 
     private XSSFWorkbook createExcel(List<UserDeviceItem> usersWithDevices, Map<Long, Device> countedDevices) {
         XSSFWorkbook workbook = new XSSFWorkbook();
 
-        XSSFSheet spreadsheet = workbook.createSheet(" Devices ");
+        XSSFSheet spreadsheet = workbook.createSheet(" UREĐAJI ");
+        spreadsheet.setColumnWidth(0, 5000);
+        spreadsheet.setColumnWidth(1, 5000);
         XSSFRow row;
         createHeader(spreadsheet);
         int rowId = 1;
         for(UserDeviceItem userDeviceItem : usersWithDevices) {
-            row = spreadsheet.createRow(rowId++);
+            row = createRow(spreadsheet, rowId++);
             int col = 0;
-            Cell cell = row.createCell(col++);
+            XSSFCell cell = row.createCell(col++);
             cell.setCellValue(userDeviceItem.getUser().getEmail());
+            applyCellStyle(workbook, cell, EMAIL, true, true);
             cell = row.createCell(col);
             cell.setCellValue(userDeviceItem.getDevices().get(0).getName());
-            for(Device device: userDeviceItem.getDevices().subList(1, userDeviceItem.getDevices().size() - 1)) {
-                row = spreadsheet.createRow(rowId++);
+            applyCellStyle(workbook, cell, DEVICE_NAME, true, checkIndex(null, userDeviceItem.getDevices()));
+            for(Device device: userDeviceItem.getDevices().subList(1, userDeviceItem.getDevices().size())) {
+                row = createRow(spreadsheet, rowId++);
+                row.createCell(0);
                 cell = row.createCell(col);
                 cell.setCellValue(device.getName());
+                applyCellStyle(workbook, cell, DEVICE_NAME, false, checkIndex(device, userDeviceItem.getDevices()));
             }
         }
         createTotal(spreadsheet, countedDevices);
         return workbook;
     }
 
+    private boolean checkIndex(Device device, List<Device> devices) {
+        if(device == null) {
+            return devices.size() == 1;
+        }
+        return devices.indexOf(device) == devices.size() - 1;
+    }
+
+    private void applyCellStyle(Workbook workbook, XSSFCell cell, String type, boolean top, boolean bottom) {
+        XSSFCellStyle style = (XSSFCellStyle) workbook.createCellStyle();
+        if(EMAIL.equals(type)) {
+            setBorderStyle(style, top, bottom, IndexedColors.BLUE.index);
+            style.setFillPattern(FillPatternType.SQUARES);
+            style.setFillForegroundColor(IndexedColors.SKY_BLUE.index);
+            applyFont((XSSFWorkbook) workbook, style, (short) 12);
+        }
+        if(DEVICE_NAME.equals(type)) {
+            setBorderStyle(style, top, bottom, IndexedColors.RED.index);
+            style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            style.setFillForegroundColor(IndexedColors.CORAL.index);
+            applyFont((XSSFWorkbook) workbook, style, (short) 12);
+        }
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        cell.setCellStyle(style);
+    }
+
+    private void applyFont(XSSFWorkbook workbook, XSSFCellStyle style, short height) {
+        XSSFFont font= workbook.createFont();
+        font.setFontHeightInPoints(height);
+        font.setFontName("Arial");
+        font.setColor(IndexedColors.BLACK.getIndex());
+        font.setBold(true);
+        font.setItalic(false);
+
+        style.setFont(font);
+    }
+
+    private void setBorderStyle(XSSFCellStyle style, boolean top, boolean bottom, short color) {
+        if(top) {
+            style.setBorderTop(BorderStyle.THICK);
+            style.setTopBorderColor(color);
+        }
+        if(bottom) {
+            style.setBorderBottom(BorderStyle.THICK);
+            style.setBottomBorderColor(color);
+        } else {
+            style.setBorderBottom(BorderStyle.DASHED);
+            style.setBottomBorderColor(color);
+        }
+        style.setBorderLeft(BorderStyle.THICK);
+        style.setLeftBorderColor(color);
+
+        style.setBorderRight(BorderStyle.THICK);
+        style.setRightBorderColor(color);
+    }
+
+
     private void createTotal(XSSFSheet spreadsheet, Map<Long, Device> countedDevices) {
-        XSSFRow row = spreadsheet.getRow(spreadsheet.getLastRowNum() % 7);
-        int col = 7;
+        XSSFRow row = spreadsheet.getRow(2);
+        int col;
+        for(col = 2; col <= 7; col++) {
+            row.createCell(col);
+        }
         Cell cell = row.createCell(col++);
         cell.setCellValue("Total");
 
@@ -93,16 +161,24 @@ public class DevicesReportProvider {
     }
 
     private void createHeader(XSSFSheet spreadsheet) {
-        XSSFRow row = spreadsheet.createRow(0);
+        XSSFRow row = createRow(spreadsheet, 0);
         int col = 0;
-        String[] headers = {"Ime", "Uredjaji"};
+        String[] headers = {EMAIL, DEVICE_NAME};
         for(String header : headers) {
-            Cell cell = row.createCell(col++);
+            XSSFCell cell = row.createCell(col++);
             cell.setCellValue(header);
+            applyCellStyle(spreadsheet.getWorkbook(), cell, header, true, false);
+            applyFont(spreadsheet.getWorkbook(), cell.getCellStyle(), (short) 14);
         }
     }
 
     private void countDevices(List<Device> devices, Map<Long, Device> countedDevices) {
         devices.forEach(device -> countedDevices.put(device.getId(), device));
+    }
+
+    private XSSFRow createRow(XSSFSheet spreadsheet, int rowNum) {
+        XSSFRow row = spreadsheet.createRow(rowNum);
+        row.setHeight((short) 500);
+        return row;
     }
 }
