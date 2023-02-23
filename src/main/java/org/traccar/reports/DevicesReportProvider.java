@@ -1,10 +1,11 @@
 package org.traccar.reports;
 
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.*;
+import org.jxls.common.Context;
 import org.traccar.model.Device;
 import org.traccar.model.User;
+import org.traccar.reports.common.ReportUtils;
 import org.traccar.reports.model.UserDeviceItem;
 import org.traccar.storage.Storage;
 import org.traccar.storage.StorageException;
@@ -13,13 +14,7 @@ import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Request;
 
 import javax.inject.Inject;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.StreamingOutput;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,12 +25,15 @@ public class DevicesReportProvider {
     private final String EMAIL = "EMAIL";
     private final String DEVICE_NAME = "UREĐAJ";
 
+    private final ReportUtils reportUtils;
+
     @Inject
-    public DevicesReportProvider(Storage storage) {
+    public DevicesReportProvider(Storage storage, ReportUtils reportUtils) {
         this.storage = storage;
+        this.reportUtils = reportUtils;
     }
 
-    public Response getDevicesInfo() throws StorageException, IOException {
+    public void getDevicesInfo(OutputStream stream) throws StorageException, IOException {
         List<User> users = storage.getObjects(User.class, new Request(new Columns.All()))
                 .stream()
                 .filter(user -> !user.getAdministrator())
@@ -52,12 +50,7 @@ public class DevicesReportProvider {
             usersWithDevices.add(new UserDeviceItem(user, devices));
         }
 
-        OutputStream ou = new FileOutputStream("report.xlsx");
-        createExcel(usersWithDevices, countedDevices).write(ou);
-        StreamingOutput stream = output -> {
-            createExcel(usersWithDevices, countedDevices);
-        };
-        return Response.ok(stream).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report.xlsx").build();
+        createExcel(usersWithDevices, countedDevices).write(stream);
     }
 
     private XSSFWorkbook createExcel(List<UserDeviceItem> usersWithDevices, Map<Long, Device> countedDevices) {

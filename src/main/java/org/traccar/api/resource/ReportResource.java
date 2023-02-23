@@ -48,6 +48,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Collection;
@@ -330,8 +331,10 @@ public class ReportResource extends BaseResource {
     @Path("devices")
     @GET
     @Produces(EXCEL)
-    public Response getDevicesReport() throws IOException, StorageException {
-        return devicesReportProvider.getDevicesInfo();
+    public Response getDevicesReport() {
+        return executeReport(getUserId(), false, stream -> {
+            devicesReportProvider.getDevicesInfo(stream);
+        });
     }
 
 }
