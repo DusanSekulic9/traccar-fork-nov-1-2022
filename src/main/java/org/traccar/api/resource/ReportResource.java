@@ -25,11 +25,7 @@ import org.traccar.model.Event;
 import org.traccar.model.Position;
 import org.traccar.model.User;
 import org.traccar.model.UserRestrictions;
-import org.traccar.reports.EventsReportProvider;
-import org.traccar.reports.RouteReportProvider;
-import org.traccar.reports.StopsReportProvider;
-import org.traccar.reports.SummaryReportProvider;
-import org.traccar.reports.TripsReportProvider;
+import org.traccar.reports.*;
 import org.traccar.reports.model.StopReportItem;
 import org.traccar.reports.model.SummaryReportItem;
 import org.traccar.reports.model.TripReportItem;
@@ -52,6 +48,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Collection;
@@ -81,6 +78,9 @@ public class ReportResource extends BaseResource {
 
     @Inject
     private TripsReportProvider tripsReportProvider;
+
+    @Inject
+    private DevicesReportProvider devicesReportProvider;
 
     @Inject
     private MailManager mailManager;
@@ -326,6 +326,15 @@ public class ReportResource extends BaseResource {
             @QueryParam("to") Date to,
             @PathParam("type") String type) throws StorageException {
         return getStopsExcel(deviceIds, groupIds, from, to, type.equals("mail"));
+    }
+
+    @Path("devices")
+    @GET
+    @Produces(EXCEL)
+    public Response getDevicesReport() {
+        return executeReport(getUserId(), false, stream -> {
+            devicesReportProvider.getDevicesInfo(stream);
+        });
     }
 
 }
