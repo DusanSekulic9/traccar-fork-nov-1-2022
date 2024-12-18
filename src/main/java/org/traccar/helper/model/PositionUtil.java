@@ -29,6 +29,7 @@ import org.traccar.storage.query.Request;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class PositionUtil {
@@ -74,7 +75,25 @@ public final class PositionUtil {
                 new Columns.All(), new Condition.LatestPositions()));
         return positions.stream()
                 .filter(position -> deviceIds.contains(position.getDeviceId()))
+                .map(position -> updateWithCustomValues(position, deviceIds.stream()
+                        .filter(deviceIdsList -> deviceIdsList.equals(position.getDeviceId()))
+                        .findFirst()
+                        .get()))
                 .collect(Collectors.toList());
+    }
+
+    private static Position updateWithCustomValues(Position position, Long initialOdomoter) {
+        position.setAttributes(updateAttributes(position.getAttributes(), initialOdomoter));
+        return position;
+    }
+
+    private static Map<String, Object> updateAttributes(Map<String, Object> attributes, Object initialOdomoter) {
+        for(String key : attributes.keySet()) {
+            if(key.equals("io16")) {
+                attributes.compute(key, (k, v) -> initialOdomoter);
+            }
+        }
+        return attributes;
     }
 
 }

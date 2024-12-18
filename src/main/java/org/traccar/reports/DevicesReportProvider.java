@@ -2,7 +2,6 @@ package org.traccar.reports;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.*;
-import org.jxls.common.Context;
 import org.traccar.model.Device;
 import org.traccar.model.User;
 import org.traccar.reports.common.ReportUtils;
@@ -24,6 +23,7 @@ public class DevicesReportProvider {
     private final Storage storage;
     private final String EMAIL = "EMAIL";
     private final String DEVICE_NAME = "UREĐAJ";
+    private final String TOTAL = "TOTAL";
 
     private final ReportUtils reportUtils;
 
@@ -46,7 +46,6 @@ public class DevicesReportProvider {
             conditions.add(new Condition.Permission(User.class, user.getId(), Device.class).excludeGroups());
             List<Device> devices = new ArrayList<>(storage.getObjects(Device.class, new Request(new Columns.All(), Condition.merge(conditions))));
             countDevices(devices, countedDevices);
-            System.out.println(user.getId() + " devices: " + devices.size());
             usersWithDevices.add(new UserDeviceItem(user, devices));
         }
 
@@ -56,9 +55,11 @@ public class DevicesReportProvider {
     private XSSFWorkbook createExcel(List<UserDeviceItem> usersWithDevices, Map<Long, Device> countedDevices) {
         XSSFWorkbook workbook = new XSSFWorkbook();
 
+        List<Long> alreadyWrittenDevices = new ArrayList<>();
+
         XSSFSheet spreadsheet = workbook.createSheet(" UREĐAJI ");
-        spreadsheet.setColumnWidth(0, 5000);
-        spreadsheet.setColumnWidth(1, 5000);
+        spreadsheet.setColumnWidth(0, 10000);
+        spreadsheet.setColumnWidth(1, 10000);
         XSSFRow row;
         createHeader(spreadsheet);
         int rowId = 1;
@@ -67,16 +68,20 @@ public class DevicesReportProvider {
             int col = 0;
             XSSFCell cell = row.createCell(col++);
             cell.setCellValue(userDeviceItem.getUser().getEmail());
-            applyCellStyle(workbook, cell, EMAIL, true, true);
+            applyCellStyle(workbook, cell, EMAIL, true, true, false);
+            if(userDeviceItem.getDevices().isEmpty()) continue;
             cell = row.createCell(col);
-            cell.setCellValue(userDeviceItem.getDevices().get(0).getName());
-            applyCellStyle(workbook, cell, DEVICE_NAME, true, checkIndex(null, userDeviceItem.getDevices()));
+            Device firstDevice = userDeviceItem.getDevices().get(0);
+            cell.setCellValue(firstDevice.getName());
+            applyCellStyle(workbook, cell, DEVICE_NAME, true, checkIndex(null, userDeviceItem.getDevices()), alreadyWrittenDevices.contains(firstDevice.getId()));
+            alreadyWrittenDevices.add(firstDevice.getId());
             for(Device device: userDeviceItem.getDevices().subList(1, userDeviceItem.getDevices().size())) {
                 row = createRow(spreadsheet, rowId++);
                 row.createCell(0);
                 cell = row.createCell(col);
                 cell.setCellValue(device.getName());
-                applyCellStyle(workbook, cell, DEVICE_NAME, false, checkIndex(device, userDeviceItem.getDevices()));
+                applyCellStyle(workbook, cell, DEVICE_NAME, false, checkIndex(device, userDeviceItem.getDevices()), alreadyWrittenDevices.contains(device.getId()));
+                alreadyWrittenDevices.add(device.getId());
             }
         }
         createTotal(spreadsheet, countedDevices);
@@ -90,7 +95,7 @@ public class DevicesReportProvider {
         return devices.indexOf(device) == devices.size() - 1;
     }
 
-    private void applyCellStyle(Workbook workbook, XSSFCell cell, String type, boolean top, boolean bottom) {
+    private void applyCellStyle(Workbook workbook, XSSFCell cell, String type, boolean top, boolean bottom, boolean alreadyWritten) {
         XSSFCellStyle style = (XSSFCellStyle) workbook.createCellStyle();
         if(EMAIL.equals(type)) {
             setBorderStyle(style, top, bottom, IndexedColors.BLUE.index);
@@ -99,9 +104,23 @@ public class DevicesReportProvider {
             applyFont((XSSFWorkbook) workbook, style, (short) 12);
         }
         if(DEVICE_NAME.equals(type)) {
-            setBorderStyle(style, top, bottom, IndexedColors.RED.index);
+            if(alreadyWritten) {
+                setBorderStyle(style, top, bottom, IndexedColors.GREY_80_PERCENT.index);
+                style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+                style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+                applyFont((XSSFWorkbook) workbook, style, (short) 12);
+            } else {
+                setBorderStyle(style, top, bottom, IndexedColors.GREEN.index);
+                style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+                style.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+                applyFont((XSSFWorkbook) workbook, style, (short) 12);
+            }
+
+        }
+        if(TOTAL.equals(type)) {
+            setBorderStyle(style, top, bottom, IndexedColors.GREEN.index);
             style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            style.setFillForegroundColor(IndexedColors.CORAL.index);
+            style.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
             applyFont((XSSFWorkbook) workbook, style, (short) 12);
         }
         style.setAlignment(HorizontalAlignment.CENTER);
@@ -148,9 +167,17 @@ public class DevicesReportProvider {
         }
         Cell cell = row.createCell(col++);
         cell.setCellValue("Total");
+        applyCellStyle(spreadsheet.getWorkbook(), (XSSFCell) cell, TOTAL, true, true, false);
+
+
+        cell = row.createCell(col++);
+        cell.setCellValue(countedDevices.size());
+        applyCellStyle(spreadsheet.getWorkbook(), (XSSFCell) cell, TOTAL, true, true, false);
 
         cell = row.createCell(col);
-        cell.setCellValue(countedDevices.size());
+        cell.setCellValue(countedDevices.size() * 60 + " RSD");
+        applyCellStyle(spreadsheet.getWorkbook(), (XSSFCell) cell, TOTAL, true, true, false);
+
     }
 
     private void createHeader(XSSFSheet spreadsheet) {
@@ -160,7 +187,7 @@ public class DevicesReportProvider {
         for(String header : headers) {
             XSSFCell cell = row.createCell(col++);
             cell.setCellValue(header);
-            applyCellStyle(spreadsheet.getWorkbook(), cell, header, true, false);
+            applyCellStyle(spreadsheet.getWorkbook(), cell, header, true, false, false);
             applyFont(spreadsheet.getWorkbook(), cell.getCellStyle(), (short) 14);
         }
     }
